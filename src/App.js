@@ -203,9 +203,7 @@ function LandingPage({ onEnter }) {
           style={{ width:"100%", fontFamily:F, fontSize:16, fontWeight:800, color:"#0F0F0F", background:color, border:"none", borderRadius:16, padding:"16px 0", cursor:"pointer", letterSpacing:"-0.01em", marginBottom:16 }}>
           Enter Proppy →
         </button>
-        <div style={{ textAlign:"center", fontFamily:F, fontSize:11, color:"rgba(255,255,255,0.25)" }}>
-          Private production app · Crew only
-        </div>
+
       </div>
     </div>
   );
