@@ -1,4 +1,5 @@
-// eslint-disable-next-line
+/* eslint-disable */
+
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import jsQRLib from "jsqr";
@@ -37,7 +38,6 @@ const LS_USER = "proppy_user_v2";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 const tsNow    = () => new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
-const fullTs   = () => new Date().toISOString();
 const initials = n  => (n||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const getUser  = () => { try { const u=localStorage.getItem(LS_USER); return u?JSON.parse(u):null; } catch { return null; } };
 const saveUser = u  => { try { localStorage.setItem(LS_USER,JSON.stringify(u)); } catch {} };
@@ -1589,9 +1589,6 @@ const NOTIF_ICONS = {
   general:        "🔔",
 };
 
-async function createNotification(userId, type, title, body, data={}) {
-  await sb.from("notifications").insert({ user_id:userId, type, title, body, data, read:false });
-}
 
 function NotificationBell({user, onOpen, count}) {
   return (
@@ -1697,40 +1694,6 @@ function NotificationTray({user, locs, onClose}) {
   );
 }
 
-// Hook — listens for new notifications in real time, vibrates + shows toast
-function useNotifications(user, onNewNotif) {
-  const [count, setCount] = useState(0);
-
-  // Load unread count on mount
-  useEffect(()=>{
-    if(!user) return;
-    sb.from("notifications").select("id",{count:"exact"}).eq("user_id",user.id).eq("read",false)
-      .then(({count:c})=>setCount(c||0));
-  },[user]);
-
-  // Real-time listener
-  useEffect(()=>{
-    if(!user) return;
-    const ch = sb.channel("notif-"+user.id)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"notifications",filter:`user_id=eq.${user.id}`},
-        payload=>{
-          const n = payload.new;
-          setCount(c=>c+1);
-          // Vibrate based on type
-          if(n.type==="prop_request")   vibrate([200,100,200]);
-          else if(n.type==="dm")        vibrate([100]);
-          else if(n.type==="request_update") vibrate([300]);
-          else                          vibrate([100,50,100]);
-          // Callback to show toast
-          onNewNotif(n);
-        }
-      ).subscribe();
-    return ()=>sb.removeChannel(ch);
-  },[user]);
-
-  const markRead = () => setCount(0);
-  return { count, markRead };
-}
 
 function UserBadge({user,locs,onSwitch}){
   const [open,setOpen]=useState(false);
@@ -1904,8 +1867,6 @@ export default function Proppy(){
   },[user, handleNewNotif]);
 
   const [showCrewPicker, setShowCrewPicker] = useState(false);
-  const [crewList,       setCrewList]       = useState([]);
-  const [crewLoading,    setCrewLoading]    = useState(false);
   const handleSwitch = ()=>{ saveUser(null); setUser(null); };
   const handlePickCrew = (u)=>{
     const picked = { id:u.id, name:`${u.first_name} ${u.surname}`, firstName:u.first_name, surname:u.surname, title:u.title, unitId:u.unit_id };
@@ -1987,7 +1948,7 @@ export default function Proppy(){
                       <span style={{fontFamily:F,fontSize:12,fontWeight:500,color:T.muted,width:16,textAlign:"right"}}>{i+1}.</span>
                       <div style={{position:"relative"}}>
                         <div style={{width:44,height:44,borderRadius:12,background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",fontSize:15,fontWeight:800,color:T.ink}}>
-                          {ch.image_url?<img src={ch.image_url} alt={ch.name} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initials(ch.name)}
+                          {ch.image_url?<img src={ch.image_url} alt={ch.name||""} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:initials(ch.name)}
                         </div>
                         {primaryLoc&&<div style={{position:"absolute",bottom:-2,right:-2,width:12,height:12,borderRadius:"50%",background:primaryLoc.color,border:"2px solid #fff"}}/>}
                       </div>
