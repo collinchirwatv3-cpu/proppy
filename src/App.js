@@ -92,28 +92,52 @@ function Drawer({children,onClose,title}) {
 // ─── SIGNUP ───────────────────────────────────────────────────────────────────
 // ─── MOVIE QUOTES ─────────────────────────────────────────────────────────────
 const QUOTES = [
-  { text: "Every frame is a painting.", film: "Paraphrased from cinema" },
+  // ── Classic Cinema ──
+  { text: "Every frame is a painting.", film: "Cinema" },
   { text: "Details make perfection, and perfection is not a detail.", film: "Leonardo da Vinci" },
   { text: "I'm going to make him an offer he can't refuse.", film: "The Godfather" },
   { text: "Get busy living, or get busy dying.", film: "The Shawshank Redemption" },
   { text: "Why so serious?", film: "The Dark Knight" },
   { text: "You can't handle the truth!", film: "A Few Good Men" },
-  { text: "To infinity and beyond.", film: "Toy Story" },
-  { text: "Just keep swimming.", film: "Finding Nemo" },
   { text: "After all this time? Always.", film: "Harry Potter" },
   { text: "The stuff that dreams are made of.", film: "The Maltese Falcon" },
   { text: "I'll be back.", film: "The Terminator" },
   { text: "May the Force be with you.", film: "Star Wars" },
-  { text: "Elementary, my dear Watson.", film: "Sherlock Holmes" },
   { text: "Here's looking at you, kid.", film: "Casablanca" },
-  { text: "You is kind, you is smart, you is important.", film: "The Help" },
-  { text: "It's not who I am underneath, but what I do that defines me.", film: "Batman Begins" },
-  { text: "The greatest trick the devil ever pulled was convincing the world he didn't exist.", film: "The Usual Suspects" },
   { text: "With great power comes great responsibility.", film: "Spider-Man" },
   { text: "I am inevitable.", film: "Avengers: Endgame" },
+  { text: "It's not who I am underneath, but what I do that defines me.", film: "Batman Begins" },
+  { text: "The greatest trick the devil ever pulled was convincing the world he didn't exist.", film: "The Usual Suspects" },
+
+  // ── One Piece ──
+  { text: "I'm going to be King of the Pirates!", film: "One Piece — Monkey D. Luffy" },
+  { text: "Nothing happened.", film: "One Piece — Roronoa Zoro" },
+  { text: "Power isn't determined by your size, but the size of your heart and dreams!", film: "One Piece — Monkey D. Luffy" },
+  { text: "I don't want to conquer anything. I just think the guy with the most freedom in this whole ocean is the Pirate King!", film: "One Piece — Monkey D. Luffy" },
+  { text: "Bring on the hardship. It's preferred in a path of carnage.", film: "One Piece — Roronoa Zoro" },
+  { text: "When do you think people die? When they are shot through the heart by the bullet of a pistol? No. When they are ravaged by an incurable disease? No. When they drink a soup made from a poisonous mushroom? No! It's when they are forgotten!", film: "One Piece — Dr. Hiluluk" },
+  { text: "A person's dreams never die!", film: "One Piece — Dr. Hiluluk" },
+  { text: "I want to live!", film: "One Piece — Nico Robin" },
+  { text: "Only those who have suffered long can see the light within the shadows.", film: "One Piece — Roronoa Zoro" },
+  { text: "There is someone that I must meet again. And until that day... not even death itself can take my life away!", film: "One Piece — Roronoa Zoro" },
+
+  // ── Apex Legends ──
+  { text: "Bleed, patch, and keep moving.", film: "Apex Legends — Lifeline" },
+  { text: "Perceptive, resourceful, relentless. You must be all these things and more.", film: "Apex Legends — Ash" },
+  { text: "No breath to steady, no heart to calm. Perfection.", film: "Apex Legends — Ash" },
+  { text: "A mind is like a blade. Keep it honed.", film: "Apex Legends — Ash" },
+  { text: "I am the master of my fate. And yours.", film: "Apex Legends — Ash" },
+  { text: "The voices are real. Listen to them.", film: "Apex Legends — Wraith" },
+  { text: "You show promise. I hope you can deliver.", film: "Apex Legends — Ash" },
+  { text: "Feel free to breathe... if you have a respiratory system.", film: "Apex Legends — Pathfinder" },
+
+  // ── Proppy Originals ──
   { text: "Every prop tells a story. Make it count.", film: "Proppy" },
   { text: "The set is yours. Own it.", film: "Proppy" },
   { text: "Good props don't just sit there. They act.", film: "Proppy" },
+  { text: "Track it. Move it. Own it.", film: "Proppy" },
+  { text: "No prop left behind.", film: "Proppy" },
+  { text: "The difference between chaos and continuity is a great props team.", film: "Proppy" },
 ];
 
 const ACCENT_COLORS = ["#F59E0B","#EF4444","#8B5CF6","#3B82F6","#16A34A","#EC4899","#0891B2"];
