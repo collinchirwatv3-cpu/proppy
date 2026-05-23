@@ -189,12 +189,7 @@ function LandingPage({ onEnter }) {
           </div>
         </div>
 
-        {/* Feature pills */}
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:40 }}>
-          {["📦 Track props","📤 Scan in/out","⏱ Timeline","📸 QR labels","👥 Full crew"].map(label => (
-            <span key={label} style={{ fontFamily:F, fontSize:11, fontWeight:600, color:"rgba(255,255,255,0.6)", background:"rgba(255,255,255,0.07)", border:"1px solid rgba(255,255,255,0.1)", borderRadius:20, padding:"5px 12px" }}>{label}</span>
-          ))}
-        </div>
+
       </div>
 
       {/* Bottom — CTA */}
