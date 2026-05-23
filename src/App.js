@@ -32,7 +32,16 @@ const S_META = {
   DAMAGED: {c:T.redDk,  bg:T.redBg,  bd:T.redBd,  dot:T.red,   label:"Damaged"},
   WRAPPED: {c:"#64748B", bg:"#F8FAFC", bd:"#E2E8F0", dot:"#94A3B8", label:"Wrapped"},
 };
-const TITLES = ["Props Master","Prop Standby","Prop Buyer","Set Decorator","Set Dec Standby","Assistant Props","Trainee Props","Other"];
+const TITLES = ["Props Master","Key Standby","Prop Standby","Prop Buyer","Set Decorator","Set Dec Standby","Assistant Props","Trainee Props","Other"];
+
+// ─── ROLE PERMISSIONS ────────────────────────────────────────────────────────
+const ADMIN_TITLES  = ["Props Master","Key Standby","Set Decorator","Prop Buyer"]; // full access
+const KEYSET_TITLES = ["Prop Standby","Set Dec Standby","Assistant Props"];           // can add/delete props
+
+const canManageProps = (user) =>
+  ADMIN_TITLES.includes(user?.title) || KEYSET_TITLES.includes(user?.title);
+
+const isAdmin = (user) => ADMIN_TITLES.includes(user?.title);
 const LS_USER = "proppy_user_v2";
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
@@ -205,7 +214,7 @@ function LandingPage({ onEnter }) {
 }
 
 function SignupScreen({locs, onSignup}) {
-  const units = locs.filter(l=>l.type==="Unit");
+  const units = locs.filter(l=>l.type==="Unit"||l.type==="Workshop");
   // Three views: landing → crew list (login) → signup form (first time only)
   const [view,        setView]       = useState("landing");
   const [crew,        setCrew]       = useState([]);
@@ -333,14 +342,37 @@ function SignupScreen({locs, onSignup}) {
               ))}
             </div>
             <div>
-              <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:6}}>Your title</div>
-              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                {TITLES.map(t=>{ const a=title===t; return (
-                  <button key={t} onClick={()=>setTitle(t)}
-                    style={{fontFamily:F,fontSize:11,fontWeight:a?700:500,color:a?"#fff":T.body,background:a?T.ink:T.bg,border:`1.5px solid ${a?T.ink:T.border}`,borderRadius:20,padding:"5px 12px",cursor:"pointer"}}>
-                    {t}
-                  </button>
-                ); })}
+              <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:8}}>Your title</div>
+
+              {/* Admin / HOD tier */}
+              <div style={{marginBottom:8}}>
+                <div style={{fontFamily:F,fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>
+                  HOD / Full Access
+                </div>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {["Props Master","Key Standby","Set Decorator","Prop Buyer"].map(t=>{ const a=title===t; return (
+                    <button key={t} onClick={()=>setTitle(t)}
+                      style={{fontFamily:F,fontSize:11,fontWeight:a?700:500,color:a?"#fff":T.ink,background:a?T.ink:T.bg,border:`1.5px solid ${a?T.ink:"#C0C0C0"}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+                      {t==="Key Standby"&&<span style={{fontSize:9,fontWeight:800,color:a?"#FFD60A":T.amberDk,background:a?"rgba(255,214,10,0.2)":T.amberBg,borderRadius:20,padding:"1px 5px"}}>KEY</span>}
+                      {t}
+                    </button>
+                  ); })}
+                </div>
+              </div>
+
+              {/* Crew tier */}
+              <div>
+                <div style={{fontFamily:F,fontSize:10,fontWeight:700,color:T.muted,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:5}}>
+                  Crew
+                </div>
+                <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                  {["Prop Standby","Set Dec Standby","Assistant Props","Trainee Props","Other"].map(t=>{ const a=title===t; return (
+                    <button key={t} onClick={()=>setTitle(t)}
+                      style={{fontFamily:F,fontSize:11,fontWeight:a?700:500,color:a?"#fff":T.body,background:a?T.ink:T.bg,border:`1.5px solid ${a?T.ink:T.border}`,borderRadius:20,padding:"5px 12px",cursor:"pointer"}}>
+                      {t}
+                    </button>
+                  ); })}
+                </div>
               </div>
             </div>
             <div>
@@ -349,7 +381,7 @@ function SignupScreen({locs, onSignup}) {
                 {units.map(loc=>{ const a=unitId===loc.id; return (
                   <button key={loc.id} onClick={()=>setUnitId(loc.id)}
                     style={{flex:1,fontFamily:F,fontSize:14,fontWeight:a?800:500,color:a?loc.color:T.body,background:a?loc.bg:T.bg,border:`2px solid ${a?loc.bd:T.border}`,borderRadius:14,padding:"14px 0",cursor:"pointer",transition:"all 0.15s"}}>
-                    <div style={{fontSize:20,marginBottom:4}}>{loc.name==="Paramecia"?"🌊":"🐉"}</div>
+                    <div style={{fontSize:20,marginBottom:4}}>{loc.name==="Paramecia"?"🌊":loc.name==="Zoan"?"🐉":"🔧"}</div>
                     {loc.name}
                   </button>
                 ); })}
@@ -808,6 +840,13 @@ function ScannerScreen({props,chars,locs,user,onScanOut,onScanIn,onBulkMove,onCl
           </div>
         </div>
       )}
+      {/* ADMIN PANEL */}
+      {showAdmin&&isAdmin(user)&&(
+        <AdminPanel user={user} locs={locs} chars={chars} allProps={props} allUsers={allUsers}
+          onClose={()=>setShowAdmin(false)}
+          onRefresh={loadAll}/>
+      )}
+
       {toast&&<Toast msg={toast.msg} color={toast.color} onDone={()=>setToast(null)}/> }
 
     </div>
@@ -815,7 +854,7 @@ function ScannerScreen({props,chars,locs,user,onScanOut,onScanIn,onBulkMove,onCl
 }
 
 // ─── CHARACTER POPUP ─────────────────────────────────────────────────────────
-function CharPopup({char,allProps,locs,onClose,onAddProp,onEditProp,onScanProp,onViewTimeline}){
+function CharPopup({char,allProps,locs,user,canManage,onClose,onAddProp,onEditProp,onScanProp,onViewTimeline}){
   const cp=allProps.filter(p=>p.character_id===char.id);
   const out=cp.filter(p=>!p.in_box);
   const [qrProp,setQrProp]=useState(null);
@@ -860,7 +899,7 @@ function CharPopup({char,allProps,locs,onClose,onAddProp,onEditProp,onScanProp,o
       )}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <span style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.ink}}>Props ({cp.length})</span>
-        <button onClick={onAddProp} style={{fontFamily:F,fontSize:12,fontWeight:600,color:"#fff",background:T.ink,border:"none",borderRadius:20,padding:"4px 12px",cursor:"pointer"}}>+ Add</button>
+        {canManage&&<button onClick={onAddProp} style={{fontFamily:F,fontSize:12,fontWeight:600,color:"#fff",background:T.ink,border:"none",borderRadius:20,padding:"4px 12px",cursor:"pointer"}}>+ Add</button>}
       </div>
       {cp.length===0&&<div style={{textAlign:"center",padding:"20px 0",fontFamily:F,fontSize:13,color:T.muted}}>No props yet</div>}
       {cp.map(p=>{
@@ -886,7 +925,7 @@ function CharPopup({char,allProps,locs,onClose,onAddProp,onEditProp,onScanProp,o
                 </div>
               </div>
               <div style={{display:"flex",gap:4,flexShrink:0}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>setQrProp(p)} style={{fontFamily:F,fontSize:10,fontWeight:600,color:T.body,background:T.white,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 7px",cursor:"pointer"}}>QR</button>
+                {canManage&&<button onClick={()=>setQrProp(p)} style={{fontFamily:F,fontSize:10,fontWeight:600,color:T.body,background:T.white,border:`1px solid ${T.border}`,borderRadius:8,padding:"4px 7px",cursor:"pointer"}}>QR</button>}
                 <button onClick={()=>onScanProp(p)} style={{fontFamily:F,fontSize:11,fontWeight:700,color:"#fff",background:p.in_box?T.amberDk:T.greenDk,border:"none",borderRadius:8,padding:"5px 9px",cursor:"pointer"}}>{p.in_box?"📤":"📥"}</button>
                 <button onClick={()=>onViewTimeline(p)} style={{fontFamily:F,fontSize:10,fontWeight:600,color:T.blueDk,background:T.blueBg,border:`1px solid ${T.blueBd}`,borderRadius:8,padding:"4px 7px",cursor:"pointer"}}>⏱</button>
               </div>
@@ -904,11 +943,15 @@ function CharPopup({char,allProps,locs,onClose,onAddProp,onEditProp,onScanProp,o
 }
 
 // ─── PROP EDIT DRAWER ─────────────────────────────────────────────────────────
-function PropDrawer({prop,chars,locs,user,onClose,onSave}){
+function PropDrawer({prop,chars,locs,user,onClose,onSave,onDelete}){
   const [f,setF]=useState({...prop});
   const [imgFile,setImgFile]=useState(null);
   const [saving,setSaving]=useState(false);
+  const [deleting,setDeleting]=useState(false);
+  const [confirmDelete,setConfirmDelete]=useState(false);
   const fileRef=useRef();
+  const isNew = !prop.id;
+
   const pickImg=e=>{
     const file=e.target.files[0];if(!file)return;
     setImgFile(file);
@@ -917,7 +960,6 @@ function PropDrawer({prop,chars,locs,user,onClose,onSave}){
   const handleSave=async()=>{
     setSaving(true);
     let imageUrl=f.image_url;
-    // Upload new image if selected
     if(imgFile){
       try{ imageUrl=await uploadImage(imgFile); }
       catch(e){ console.error("Image upload failed",e); }
@@ -925,12 +967,30 @@ function PropDrawer({prop,chars,locs,user,onClose,onSave}){
     await onSave({...f,image_url:imageUrl});
     setSaving(false);
   };
+  const handleDelete=async()=>{
+    setDeleting(true);
+    await sb.from("prop_logs").delete().eq("prop_id",prop.id);
+    await sb.from("props").delete().eq("id",prop.id);
+    setDeleting(false);
+    onDelete();
+  };
+
   return(
-    <Drawer onClose={onClose} title={prop.id?"Edit prop":"Add prop"}>
-      <div onClick={()=>fileRef.current.click()} style={{height:90,background:T.bg,borderRadius:12,border:`1.5px dashed ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",marginBottom:14}}>
-        {f.image_url?<img src={f.image_url} alt="prop" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{textAlign:"center"}}><div style={{fontSize:22}}>📷</div><div style={{fontFamily:F,fontSize:11,color:T.muted}}>Tap to add photo</div></div>}
-        <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={pickImg}/>
+    <Drawer onClose={onClose} title={isNew?"Add prop":"Edit prop"}>
+      {/* Photo — fixed orientation with object-fit */}
+      <div onClick={()=>fileRef.current.click()}
+        style={{height:120,background:T.bg,borderRadius:12,border:`1.5px dashed ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",marginBottom:14,position:"relative"}}>
+        {f.image_url
+          ? <img src={f.image_url} alt="prop"
+              style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:"center"}}/>
+          : <div style={{textAlign:"center"}}><div style={{fontSize:22}}>📷</div><div style={{fontFamily:F,fontSize:11,color:T.muted}}>Tap to add photo</div></div>}
+        {f.image_url&&(
+          <button onClick={e=>{e.stopPropagation();setF(x=>({...x,image_url:null}));setImgFile(null);}}
+            style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,0.5)",border:"none",borderRadius:"50%",width:24,height:24,color:"#fff",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={pickImg}/>
       </div>
+
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
         <div>
           <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>Character</div>
@@ -974,10 +1034,31 @@ function PropDrawer({prop,chars,locs,user,onClose,onSave}){
             style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 12px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
         </div>
       </div>
+
+      {/* Save + Cancel */}
       <div style={{display:"flex",gap:8,marginTop:18}}>
         <button onClick={onClose} style={{flex:1,fontFamily:F,fontSize:13,fontWeight:600,color:T.body,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"10px 0",cursor:"pointer"}}>Cancel</button>
         <button onClick={handleSave} disabled={saving} style={{flex:2,fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:saving?"#888":T.ink,border:"none",borderRadius:12,padding:"10px 0",cursor:saving?"not-allowed":"pointer"}}>{saving?"Saving…":"Save prop"}</button>
       </div>
+
+      {/* Delete — only on existing props */}
+      {!isNew&&(
+        <div style={{marginTop:10}}>
+          {!confirmDelete
+            ? <button onClick={()=>setConfirmDelete(true)}
+                style={{width:"100%",fontFamily:F,fontSize:12,fontWeight:600,color:T.redDk,background:T.redBg,border:`1.5px solid ${T.redBd}`,borderRadius:12,padding:"9px 0",cursor:"pointer"}}>
+                🗑 Delete this prop
+              </button>
+            : <div style={{background:T.redBg,border:`1.5px solid ${T.redBd}`,borderRadius:12,padding:"12px 14px"}}>
+                <div style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.redDk,marginBottom:10}}>Delete "{prop.name}"? This cannot be undone.</div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={()=>setConfirmDelete(false)} style={{flex:1,fontFamily:F,fontSize:12,fontWeight:600,color:T.body,background:T.white,border:`1px solid ${T.border}`,borderRadius:10,padding:"8px 0",cursor:"pointer"}}>Cancel</button>
+                  <button onClick={handleDelete} disabled={deleting} style={{flex:1,fontFamily:F,fontSize:12,fontWeight:700,color:"#fff",background:T.redDk,border:"none",borderRadius:10,padding:"8px 0",cursor:"pointer"}}>{deleting?"Deleting…":"Yes, delete"}</button>
+                </div>
+              </div>
+          }
+        </div>
+      )}
     </Drawer>
   );
 }
@@ -1057,6 +1138,410 @@ function LocDrawer({loc,onClose,onSave,onDelete}){
     </Drawer>
   );
 }
+
+
+// ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
+
+function AdminPanel({user, locs, chars, allProps, allUsers, onClose, onRefresh}) {
+  const [view,    setView]    = useState("overview"); // overview | crew | reports
+  const [loading, setLoading] = useState(false);
+  const [toast,   setToast]   = useState(null);
+
+  const showToast = (msg, color) => { setToast({msg,color}); setTimeout(()=>setToast(null),3000); };
+
+  const deleteCrew = async (id, name) => {
+    if(!window.confirm(`Remove ${name} from the crew?`)) return;
+    await sb.from("proppy_users").delete().eq("id", id);
+    showToast(`${name} removed`, T.redDk);
+    onRefresh();
+  };
+
+  const totalProps   = allProps.length;
+  const outProps     = allProps.filter(p=>!p.in_box).length;
+  const damagedProps = allProps.filter(p=>p.status==="DAMAGED").length;
+  const heroProps    = allProps.filter(p=>p.status==="HERO").length;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:T.white,zIndex:400,display:"flex",flexDirection:"column",maxWidth:480,margin:"0 auto"}}>
+      {/* Header */}
+      <div style={{background:T.ink,padding:"16px 20px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
+        <div>
+          <div style={{fontFamily:F,fontSize:18,fontWeight:800,color:"#fff",letterSpacing:"-0.02em"}}>Admin Panel</div>
+          <div style={{fontFamily:F,fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:2}}>Project Utopia</div>
+        </div>
+        <button onClick={onClose} style={{background:"rgba(255,255,255,0.1)",border:"none",borderRadius:"50%",width:32,height:32,color:"#fff",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+      </div>
+
+      {/* Sub tabs */}
+      <div style={{background:T.ink,borderBottom:`1px solid rgba(255,255,255,0.1)`,display:"flex",padding:"0 20px",flexShrink:0}}>
+        {[["overview","Overview"],["crew","Crew"],["reports","Reports"]].map(([k,label])=>{
+          const a=view===k;
+          return(
+            <button key={k} onClick={()=>setView(k)}
+              style={{fontFamily:F,fontSize:12,fontWeight:a?700:500,color:a?"#fff":"rgba(255,255,255,0.4)",padding:"10px 14px",background:"transparent",border:"none",borderBottom:`2px solid ${a?"#fff":"transparent"}`,cursor:"pointer"}}>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div style={{flex:1,overflowY:"auto",padding:"16px 20px 80px"}}>
+
+        {/* ── OVERVIEW ── */}
+        {view==="overview"&&(
+          <div>
+            {/* Stats grid */}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:20}}>
+              {[
+                {n:totalProps,   label:"Total Props",    c:T.blueDk,   bg:T.blueBg},
+                {n:outProps,     label:"Out of Box",     c:T.amberDk,  bg:T.amberBg},
+                {n:heroProps,    label:"Hero Props",     c:T.greenDk,  bg:T.greenBg},
+                {n:damagedProps, label:"Damaged",        c:T.redDk,    bg:T.redBg},
+                {n:chars.length, label:"Characters",     c:T.purpleDk, bg:T.purpleBg},
+                {n:allUsers.length,label:"Crew Members", c:T.ink,      bg:T.bg},
+              ].map(s=>(
+                <div key={s.label} style={{background:s.bg,borderRadius:14,padding:"14px 16px"}}>
+                  <div style={{fontFamily:F,fontSize:26,fontWeight:800,color:s.c,lineHeight:1,marginBottom:4}}>{s.n}</div>
+                  <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:s.c}}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Props by location */}
+            <div style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.ink,marginBottom:10}}>Props by location</div>
+            {locs.map(loc=>{
+              const lp  = allProps.filter(p=>p.location_id===loc.id);
+              const out = lp.filter(p=>!p.in_box);
+              if(lp.length===0) return null;
+              return(
+                <div key={loc.id} style={{display:"flex",gap:10,alignItems:"center",padding:"10px 14px",background:T.white,border:`1px solid ${T.border}`,borderRadius:12,marginBottom:6}}>
+                  <div style={{width:36,height:36,borderRadius:10,background:loc.bg,border:`1.5px solid ${loc.bd}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontFamily:F,fontSize:11,fontWeight:800,color:loc.color}}>{(loc.name||"").slice(0,2).toUpperCase()}</span>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.ink}}>{loc.name}</div>
+                    <div style={{fontFamily:F,fontSize:11,color:T.muted}}>{lp.length} props{out.length>0?` · ${out.length} out`:""}</div>
+                  </div>
+                  <div style={{background:"#F5F5F5",borderRadius:20,padding:"3px 10px"}}>
+                    <span style={{fontFamily:F,fontSize:12,fontWeight:700,color:T.ink}}>{lp.length}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── CREW ── */}
+        {view==="crew"&&(
+          <div>
+            <div style={{fontFamily:F,fontSize:13,color:T.muted,marginBottom:14}}>{allUsers.length} crew members on Project Utopia</div>
+            {allUsers.map(u=>{
+              const unit = locs.find(l=>l.id===u.unit_id);
+              const isMe = u.id===user.id;
+              const isHOD = ADMIN_TITLES.includes(u.title);
+              return(
+                <div key={u.id} style={{display:"flex",gap:12,alignItems:"center",background:T.white,border:`1px solid ${T.border}`,borderRadius:14,padding:"12px 14px",marginBottom:6}}>
+                  <div style={{width:42,height:42,borderRadius:12,background:unit?.bg||T.bg,border:`1.5px solid ${unit?.bd||T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,fontSize:14,fontWeight:700,color:unit?.color||T.body,flexShrink:0}}>
+                    {initials(`${u.first_name} ${u.surname}`)}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:2}}>
+                      <span style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.ink}}>{u.first_name} {u.surname}</span>
+                      {isMe&&<span style={{fontFamily:F,fontSize:9,fontWeight:700,color:T.greenDk,background:T.greenBg,border:`1px solid ${T.greenBd}`,borderRadius:20,padding:"1px 6px"}}>YOU</span>}
+                      {isHOD&&<span style={{fontFamily:F,fontSize:9,fontWeight:700,color:T.amberDk,background:T.amberBg,border:`1px solid ${T.amberBd}`,borderRadius:20,padding:"1px 6px"}}>ADMIN</span>}
+                    </div>
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                      <span style={{fontFamily:F,fontSize:11,color:T.muted}}>{u.title}</span>
+                      {unit&&<span style={{fontFamily:F,fontSize:10,fontWeight:700,color:unit.color,background:unit.bg,border:`1px solid ${unit.bd}`,borderRadius:20,padding:"1px 7px"}}>{unit.name}</span>}
+                    </div>
+                  </div>
+                  {!isMe&&(
+                    <button onClick={()=>deleteCrew(u.id,`${u.first_name} ${u.surname}`)}
+                      style={{background:T.redBg,border:`1px solid ${T.redBd}`,borderRadius:8,padding:"5px 10px",fontFamily:F,fontSize:11,fontWeight:600,color:T.redDk,cursor:"pointer",flexShrink:0}}>
+                      Remove
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── REPORTS ── */}
+        {view==="reports"&&(
+          <ReportsView user={user} locs={locs} allProps={allProps} chars={chars} allUsers={allUsers}/>
+        )}
+      </div>
+
+      {/* ADMIN PANEL */}
+      {showAdmin&&isAdmin(user)&&(
+        <AdminPanel user={user} locs={locs} chars={chars} allProps={props} allUsers={allUsers}
+          onClose={()=>setShowAdmin(false)}
+          onRefresh={loadAll}/>
+      )}
+
+      {toast&&<Toast msg={toast.msg} color={toast.color} onDone={()=>setToast(null)}/>}
+    </div>
+  );
+}
+
+// ─── REPORTS ─────────────────────────────────────────────────────────────────
+
+function ReportsView({user, locs, allProps, chars, allUsers}) {
+  const [reportType, setReportType] = useState("daily"); // daily | weekly
+  const [logs,       setLogs]       = useState([]);
+  const [loading,    setLoading]    = useState(false);
+  const [generated,  setGenerated]  = useState(false);
+
+  const getDateRange = () => {
+    const now   = new Date();
+    const start = new Date(now);
+    if(reportType==="daily") {
+      start.setHours(0,0,0,0);
+    } else {
+      // Start of shoot week (Monday)
+      const day = now.getDay();
+      const diff = day===0 ? -6 : 1-day;
+      start.setDate(now.getDate()+diff);
+      start.setHours(0,0,0,0);
+    }
+    return { start, end: now };
+  };
+
+  const generate = async () => {
+    setLoading(true);
+    const {start, end} = getDateRange();
+    const {data} = await sb.from("prop_logs")
+      .select("*")
+      .gte("timestamp", start.toISOString())
+      .lte("timestamp", end.toISOString())
+      .order("timestamp", {ascending:false});
+    setLogs(data||[]);
+    setGenerated(true);
+    setLoading(false);
+  };
+
+  const exportPDF = () => {
+    const {start, end} = getDateRange();
+    const dateStr = reportType==="daily"
+      ? new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long",year:"numeric"})
+      : `Week of ${start.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} – ${end.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}`;
+
+    // Group logs by prop
+    const byProp = {};
+    logs.forEach(l=>{
+      if(!byProp[l.prop_id]) byProp[l.prop_id]={prop_id:l.prop_id,entries:[]};
+      byProp[l.prop_id].entries.push(l);
+    });
+
+    const outAtWrap    = allProps.filter(p=>!p.in_box);
+    const damaged      = allProps.filter(p=>p.status==="DAMAGED");
+    const totalMoves   = logs.length;
+
+    const w = window.open("","_blank");
+    w.document.write(`
+      <html><head><title>Proppy — ${reportType==="daily"?"Daily Wrap":"Weekly"} Report</title>
+      <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:system-ui,sans-serif;color:#1a1a1a;padding:32px;max-width:800px;margin:0 auto}
+        h1{font-size:24px;font-weight:800;margin-bottom:4px}
+        .sub{font-size:13px;color:#888;margin-bottom:32px}
+        .section{margin-bottom:28px}
+        .section h2{font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:#888;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #eee}
+        .stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:24px}
+        .stat{background:#f5f5f5;border-radius:10px;padding:12px;text-align:center}
+        .stat-n{font-size:24px;font-weight:800}
+        .stat-l{font-size:11px;color:#888;margin-top:2px}
+        table{width:100%;border-collapse:collapse;font-size:12px}
+        th{text-align:left;padding:8px 10px;background:#f5f5f5;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.05em}
+        td{padding:8px 10px;border-bottom:1px solid #eee}
+        .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700}
+        .out{background:#FFFBEB;color:#D97706}
+        .in{background:#F0FDF4;color:#16A34A}
+        .dmg{background:#FEF2F2;color:#DC2626}
+        .footer{margin-top:40px;padding-top:16px;border-top:1px solid #eee;font-size:11px;color:#aaa;display:flex;justify-content:space-between}
+      </style></head>
+      <body>
+        <h1>Proppy ${reportType==="daily"?"Daily Wrap Report":"Weekly Report"}</h1>
+        <p class="sub">Project Utopia · ${dateStr} · Generated by ${user.name}</p>
+
+        <div class="stat-grid">
+          <div class="stat"><div class="stat-n">${totalMoves}</div><div class="stat-l">Total Moves</div></div>
+          <div class="stat"><div class="stat-n">${outAtWrap.length}</div><div class="stat-l">Still Out</div></div>
+          <div class="stat"><div class="stat-n">${damaged.length}</div><div class="stat-l">Damaged</div></div>
+          <div class="stat"><div class="stat-n">${allProps.length}</div><div class="stat-l">Total Props</div></div>
+        </div>
+
+        ${outAtWrap.length>0?`
+        <div class="section">
+          <h2>⚠️ Props Still Out at ${reportType==="daily"?"Wrap":"End of Week"}</h2>
+          <table>
+            <tr><th>Prop</th><th>Character</th><th>Location</th><th>Status</th></tr>
+            ${outAtWrap.map(p=>{
+              const ch  = chars.find(c=>c.id===p.character_id);
+              const loc = locs.find(l=>l.id===p.location_id);
+              return `<tr><td>${p.name}</td><td>${ch?.name||"—"}</td><td>${loc?.name||"—"}</td><td>${p.status}</td></tr>`;
+            }).join("")}
+          </table>
+        </div>`:""}
+
+        ${damaged.length>0?`
+        <div class="section">
+          <h2>🔴 Damaged Props</h2>
+          <table>
+            <tr><th>Prop</th><th>Character</th><th>Notes</th></tr>
+            ${damaged.map(p=>{
+              const ch = chars.find(c=>c.id===p.character_id);
+              return `<tr><td>${p.name}</td><td>${ch?.name||"—"}</td><td>${p.notes||"—"}</td></tr>`;
+            }).join("")}
+          </table>
+        </div>`:""}
+
+        <div class="section">
+          <h2>📦 Movement Log (${logs.length} entries)</h2>
+          <table>
+            <tr><th>Time</th><th>Prop</th><th>Action</th><th>Location</th><th>Scene</th><th>By</th></tr>
+            ${logs.map(l=>{
+              const prop = allProps.find(p=>p.id===l.prop_id);
+              const loc  = locs.find(lo=>lo.id===l.location_id);
+              const time = new Date(l.timestamp).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+              const badgeClass = l.action==="SCAN OUT"?"out":l.action==="SCAN IN"?"in":"";
+              return `<tr>
+                <td>${time}</td>
+                <td>${prop?.name||"—"}</td>
+                <td><span class="badge ${badgeClass}">${l.action}</span></td>
+                <td>${loc?.name||"—"}</td>
+                <td>${l.scene||"—"}</td>
+                <td>${l.user_name||"—"}</td>
+              </tr>`;
+            }).join("")}
+          </table>
+        </div>
+
+        <div class="footer">
+          <span>Proppy · getproppy.vercel.app</span>
+          <span>Generated ${new Date().toLocaleString("en-GB")}</span>
+        </div>
+      </body></html>
+    `);
+    w.document.close();
+    setTimeout(()=>{ w.print(); }, 500);
+  };
+
+  const {start, end} = getDateRange();
+  const outAtWrap  = allProps.filter(p=>!p.in_box);
+  const damaged    = allProps.filter(p=>p.status==="DAMAGED");
+
+  return (
+    <div>
+      {/* Report type toggle */}
+      <div style={{display:"flex",gap:2,background:T.bg,borderRadius:10,padding:3,marginBottom:16}}>
+        {[["daily","Daily Wrap"],["weekly","Weekly"]].map(([k,label])=>{
+          const a=reportType===k;
+          return(
+            <button key={k} onClick={()=>{setReportType(k);setGenerated(false);}}
+              style={{flex:1,fontFamily:F,fontSize:13,fontWeight:a?700:500,color:a?T.ink:T.muted,background:a?T.white:"transparent",border:"none",borderRadius:8,padding:"8px 0",cursor:"pointer",boxShadow:a?"0 1px 4px rgba(0,0,0,0.08)":"none"}}>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Date range info */}
+      <div style={{background:T.bg,borderRadius:12,padding:"10px 14px",marginBottom:16}}>
+        <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body}}>
+          {reportType==="daily"
+            ? `Today — ${new Date().toLocaleDateString("en-GB",{weekday:"long",day:"numeric",month:"long"})}`
+            : `This week — ${start.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} to ${end.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}`
+          }
+        </div>
+      </div>
+
+      {/* Generate button */}
+      {!generated ? (
+        <button onClick={generate} disabled={loading}
+          style={{width:"100%",fontFamily:F,fontSize:14,fontWeight:700,color:"#fff",background:loading?"#888":T.ink,border:"none",borderRadius:12,padding:"13px 0",cursor:loading?"not-allowed":"pointer",marginBottom:16}}>
+          {loading?"Generating…":`Generate ${reportType==="daily"?"Daily Wrap":"Weekly"} Report`}
+        </button>
+      ) : (
+        <>
+          {/* Quick stats */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:8,marginBottom:16}}>
+            {[
+              {n:logs.length,       label:"Total Moves",  c:T.blueDk,  bg:T.blueBg},
+              {n:outAtWrap.length,  label:"Still Out",    c:T.amberDk, bg:T.amberBg},
+              {n:damaged.length,    label:"Damaged",      c:T.redDk,   bg:T.redBg},
+              {n:allProps.length,   label:"Total Props",  c:T.greenDk, bg:T.greenBg},
+            ].map(s=>(
+              <div key={s.label} style={{background:s.bg,borderRadius:12,padding:"12px 14px"}}>
+                <div style={{fontFamily:F,fontSize:22,fontWeight:800,color:s.c,lineHeight:1,marginBottom:3}}>{s.n}</div>
+                <div style={{fontFamily:F,fontSize:11,fontWeight:600,color:s.c}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Props still out */}
+          {outAtWrap.length>0&&(
+            <div style={{background:T.amberBg,border:`1px solid ${T.amberBd}`,borderRadius:12,padding:"12px 14px",marginBottom:12}}>
+              <div style={{fontFamily:F,fontSize:12,fontWeight:700,color:T.amberDk,marginBottom:8}}>⚠️ Still out at wrap ({outAtWrap.length})</div>
+              {outAtWrap.map(p=>{
+                const loc=locs.find(l=>l.id===p.location_id);
+                return(
+                  <div key={p.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
+                    <span style={{fontFamily:F,fontSize:12,color:T.ink,flex:1}}>{p.name}</span>
+                    {loc&&<Badge label={loc.name} c={loc.color} bg={loc.bg} bd={loc.bd} sz={10}/>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Movement log */}
+          <div style={{fontFamily:F,fontSize:12,fontWeight:700,color:T.body,marginBottom:8}}>Movement log ({logs.length})</div>
+          {logs.length===0 ? (
+            <div style={{textAlign:"center",padding:"20px 0",fontFamily:F,fontSize:13,color:T.muted}}>No movements recorded</div>
+          ) : (
+            <div style={{display:"flex",flexDirection:"column",gap:2,marginBottom:16}}>
+              {logs.map(l=>{
+                const prop = allProps.find(p=>p.id===l.prop_id);
+                const loc  = locs.find(lo=>lo.id===l.location_id);
+                const isOut = l.action==="SCAN OUT"||l.action==="BULK MOVE";
+                const time  = new Date(l.timestamp).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+                return(
+                  <div key={l.id} style={{display:"flex",gap:10,alignItems:"center",background:T.white,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 12px"}}>
+                    <span style={{fontSize:14,flexShrink:0}}>{isOut?"📤":"📥"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.ink,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{prop?.name||"Unknown prop"}</div>
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:2}}>
+                        {loc&&<Badge label={loc.name} c={loc.color} bg={loc.bg} bd={loc.bd} sz={9}/>}
+                        {l.scene&&<span style={{fontFamily:F,fontSize:10,color:T.muted}}>Sc {l.scene}</span>}
+                        {l.user_name&&<span style={{fontFamily:F,fontSize:10,color:T.muted}}>· {l.user_name}</span>}
+                      </div>
+                    </div>
+                    <span style={{fontFamily:F,fontSize:10,color:T.muted,flexShrink:0}}>{time}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={exportPDF}
+              style={{flex:2,fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:T.ink,border:"none",borderRadius:12,padding:"12px 0",cursor:"pointer"}}>
+              🖨 Export PDF
+            </button>
+            <button onClick={()=>setGenerated(false)}
+              style={{flex:1,fontFamily:F,fontSize:12,fontWeight:600,color:T.body,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"12px 0",cursor:"pointer"}}>
+              ↩ Reset
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 
 // ─── USER BADGE ───────────────────────────────────────────────────────────────
 
@@ -2381,14 +2866,16 @@ export default function Proppy(){
   // ── LOAD DATA ──
   const loadAll = useCallback(async()=>{
     setLoading(true);
-    const [l,c,p] = await Promise.all([
+    const [l,c,p,u] = await Promise.all([
       sb.from("locations").select("*").order("created_at"),
       sb.from("characters").select("*").order("created_at"),
       sb.from("props").select("*").order("created_at"),
+      sb.from("proppy_users").select("*").order("first_name"),
     ]);
     if(l.data) setLocs(l.data);
     if(c.data) setChars(c.data);
     if(p.data) setProps(p.data);
+    if(u.data) setAllUsers(u.data);
     setLoading(false);
   },[]);
 
@@ -2471,7 +2958,9 @@ export default function Proppy(){
   const handleSignup = (u)=>{ setUser(u); };
 
   // ── NOTIFICATIONS ──
-  const [showNotifTray, setShowNotifTray] = useState(false);
+  const [showAdmin,      setShowAdmin]      = useState(false);
+  const [allUsers,       setAllUsers]       = useState([]);
+  const [showNotifTray,  setShowNotifTray]  = useState(false);
   const [notifToast,    setNotifToast]    = useState(null);
   const [notifCount,    setNotifCount]    = useState(0);
 
@@ -2524,7 +3013,7 @@ export default function Proppy(){
   const vfxProps  = props.filter(p=>p.location_id===vfxLoc?.id);
 
   // First time only — no user in localStorage -> show landing + signup
-  if(!user) return <SignupScreen locs={locs.length?locs:[{id:"l1",name:"Paramecia",type:"Unit",color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{id:"l2",name:"Zoan",type:"Unit",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"}]} onSignup={handleSignup}/>;
+  if(!user) return <SignupScreen locs={locs.length?locs:[{id:"l1",name:"Paramecia",type:"Unit",color:"#16A34A",bg:"#F0FDF4",bd:"#BBF7D0"},{id:"l2",name:"Zoan",type:"Unit",color:"#2563EB",bg:"#EFF6FF",bd:"#BFDBFE"},{id:"l3",name:"Workshop",type:"Workshop",color:"#D97706",bg:"#FFFBEB",bd:"#FDE68A"}]} onSignup={handleSignup}/>;
   if(loading) return <div style={{minHeight:"100vh",background:T.bg,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:12}}><Spinner/><div style={{fontFamily:F,fontSize:13,color:T.muted}}>Loading Proppy...</div></div>;
 
   return(
@@ -2546,6 +3035,12 @@ export default function Proppy(){
               ⊡ Scan
               {totalOut>0&&<span style={{background:T.amber,color:"#fff",borderRadius:"50%",width:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:800}}>{totalOut}</span>}
             </button>
+            {isAdmin(user)&&(
+              <button onClick={()=>setShowAdmin(true)}
+                style={{background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:"50%",width:36,height:36,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:16}}>
+                ⚙️
+              </button>
+            )}
             <NotificationBell user={user} count={notifCount} onOpen={()=>{setShowNotifTray(true);setNotifCount(0);sb.from("notifications").update({read:true}).eq("user_id",user.id).eq("read",false);}}/>
             <UserBadge user={user} locs={locs} onSwitch={handleSwitch}/>
           </div>
@@ -2566,7 +3061,7 @@ export default function Proppy(){
       {tab==="Characters"&&(
         <div style={{flex:1,padding:"12px 16px 80px"}}>
           <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-            <button onClick={()=>setAddChar(true)} style={{fontFamily:F,fontSize:12,fontWeight:600,color:"#fff",background:T.ink,border:"none",borderRadius:20,padding:"5px 14px",cursor:"pointer"}}>+ Character</button>
+            {isAdmin(user)&&<button onClick={()=>setAddChar(true)} style={{fontFamily:F,fontSize:12,fontWeight:600,color:"#fff",background:T.ink,border:"none",borderRadius:20,padding:"5px 14px",cursor:"pointer"}}>+ Character</button>}
           </div>
           {chars.length===0
             ?<div style={{textAlign:"center",padding:"60px 0"}}><div style={{fontSize:40,marginBottom:10}}>👤</div><div style={{fontFamily:F,fontSize:15,fontWeight:600,color:T.body}}>No characters yet</div></div>
@@ -2622,7 +3117,7 @@ export default function Proppy(){
       {tab==="Locations"&&(
         <div style={{flex:1,padding:"12px 16px 80px"}}>
           <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-            <button onClick={()=>setAddLoc(true)} style={{fontFamily:F,fontSize:12,fontWeight:600,color:"#fff",background:T.ink,border:"none",borderRadius:20,padding:"5px 14px",cursor:"pointer"}}>+ Location</button>
+            {isAdmin(user)&&<button onClick={()=>setAddLoc(true)} style={{fontFamily:F,fontSize:12,fontWeight:600,color:"#fff",background:T.ink,border:"none",borderRadius:20,padding:"5px 14px",cursor:"pointer"}}>+ Location</button>}
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:2}}>
             {locs.map(loc=>{
@@ -2702,8 +3197,8 @@ export default function Proppy(){
       {showScanner&&<ScannerScreen props={props} chars={chars} locs={locs} user={user} onScanOut={doScanOut} onScanIn={doScanIn} onBulkMove={doBulkMove} onClose={()=>setShowScanner(false)}/>}
 
       {/* DRAWERS */}
-      {openChar&&<CharPopup char={openChar} allProps={props} locs={locs} onClose={()=>setOpenChar(null)} onAddProp={()=>setEditProp({character_id:openChar.id,name:"",scene:"",location_id:locs[0]?.id||"",status:"STANDBY",in_box:true,notes:"",image_url:null})} onEditProp={p=>setEditProp(p)} onScanProp={p=>setScanProp(p)} onViewTimeline={p=>setTimeline(p)}/>}
-      {editProp&&<PropDrawer prop={editProp} chars={chars} locs={locs} user={user} onClose={()=>setEditProp(null)} onSave={saveProp}/>}
+      {openChar&&<CharPopup char={openChar} allProps={props} locs={locs} user={user} canManage={canManageProps(user)} onClose={()=>setOpenChar(null)} onAddProp={()=>setEditProp({character_id:openChar.id,name:"",scene:"",location_id:locs[0]?.id||"",status:"STANDBY",in_box:true,notes:"",image_url:null})} onEditProp={p=>canManageProps(user)&&setEditProp(p)} onScanProp={p=>setScanProp(p)} onViewTimeline={p=>setTimeline(p)}/>}
+      {editProp&&<PropDrawer prop={editProp} chars={chars} locs={locs} user={user} onClose={()=>setEditProp(null)} onSave={saveProp} onDelete={()=>{ setEditProp(null); setOpenChar(null); }}/>}
       {scanProp&&<Drawer onClose={()=>setScanProp(null)} title={null}><ScanAction prop={scanProp} locs={locs} onScanOut={(id,loc,scene)=>{doScanOut(id,loc,scene);setScanProp(null);}} onScanIn={(id)=>{doScanIn(id);setScanProp(null);}} onClose={()=>setScanProp(null)}/></Drawer>}
       {timeline&&<PropTimeline prop={timeline} locs={locs} onClose={()=>setTimeline(null)}/>}
       {addChar&&<AddCharDrawer onClose={()=>setAddChar(false)} onSave={saveChar}/>}
@@ -2725,6 +3220,13 @@ export default function Proppy(){
 
       {/* NOTIFICATION TRAY */}
       {showNotifTray&&<NotificationTray user={user} locs={locs} onClose={()=>setShowNotifTray(false)}/>}
+
+      {/* ADMIN PANEL */}
+      {showAdmin&&isAdmin(user)&&(
+        <AdminPanel user={user} locs={locs} chars={chars} allProps={props} allUsers={allUsers}
+          onClose={()=>setShowAdmin(false)}
+          onRefresh={loadAll}/>
+      )}
 
       {toast&&<Toast msg={toast.msg} color={toast.color} onDone={()=>setToast(null)}/>}
 
