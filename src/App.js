@@ -200,11 +200,32 @@ function SignupScreen({locs, onSignup}) {
   const [err,         setErr]        = useState("");
   const [saving,      setSaving]     = useState(false);
 
+  const [loginFirst,   setLoginFirst]   = useState("");
+  const [loginSurname, setLoginSurname] = useState("");
+  const [loginErr,     setLoginErr]     = useState("");
+
   const loadCrew = async () => {
     setLoadingCrew(true);
     const {data} = await sb.from("proppy_users").select("*, unit:locations(id,name,color,bg,bd)").order("first_name");
     setCrew(data||[]);
     setLoadingCrew(false);
+  };
+
+  const handleNameLogin = async () => {
+    if(!loginFirst.trim()||!loginSurname.trim()){ setLoginErr("Please enter your first name and surname"); return; }
+    setLoadingCrew(true);
+    setLoginErr("");
+    const {data} = await sb.from("proppy_users")
+      .select("*, unit:locations(id,name,color,bg,bd)")
+      .ilike("first_name", loginFirst.trim())
+      .ilike("surname",    loginSurname.trim())
+      .limit(1);
+    setLoadingCrew(false);
+    if(data&&data.length>0){
+      handleLogin(data[0]);
+    } else {
+      setLoginErr("No profile found. Check your name or create a new profile below.");
+    }
   };
 
   const handleLogin = (u) => {
@@ -234,50 +255,39 @@ function SignupScreen({locs, onSignup}) {
   if (view==="login") return (
     <div style={{minHeight:"100vh",background:T.bg,fontFamily:F,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{width:"100%",maxWidth:380}}>
-        <div style={{textAlign:"center",marginBottom:22}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{width:52,height:52,background:T.ink,borderRadius:14,display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 12px"}}>
             <span style={{color:"#fff",fontFamily:F,fontSize:20,fontWeight:800}}>P</span>
           </div>
-          <div style={{fontFamily:F,fontSize:22,fontWeight:800,color:T.ink,letterSpacing:"-0.02em"}}>Who's on set?</div>
-          <div style={{fontFamily:F,fontSize:13,color:T.muted,marginTop:4}}>Tap your name to sign in</div>
+          <div style={{fontFamily:F,fontSize:22,fontWeight:800,color:T.ink,letterSpacing:"-0.02em"}}>Sign in</div>
+          <div style={{fontFamily:F,fontSize:13,color:T.muted,marginTop:4}}>Enter your name to continue</div>
         </div>
 
-        <div style={{background:T.white,borderRadius:20,overflow:"hidden",boxShadow:"0 2px 20px rgba(0,0,0,0.07)",marginBottom:14}}>
-          {loadingCrew ? (
-            <div style={{textAlign:"center",padding:"30px 0",fontFamily:F,fontSize:13,color:T.muted}}>Loading crew…</div>
-          ) : crew.length===0 ? (
-            <div style={{textAlign:"center",padding:"30px 20px"}}>
-              <div style={{fontSize:32,marginBottom:8}}>👋</div>
-              <div style={{fontFamily:F,fontSize:14,fontWeight:600,color:T.body,marginBottom:4}}>No crew yet</div>
-              <div style={{fontFamily:F,fontSize:12,color:T.muted}}>Be the first to sign up below</div>
+        <div style={{background:T.white,borderRadius:20,padding:"22px 22px 26px",boxShadow:"0 2px 20px rgba(0,0,0,0.07)",marginBottom:14}}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{display:"flex",gap:10}}>
+              {[["First name",loginFirst,setLoginFirst,"First name"],["Surname",loginSurname,setLoginSurname,"Surname"]].map(([label,val,set,ph])=>(
+                <div key={label} style={{flex:1}}>
+                  <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>{label}</div>
+                  <input value={val} onChange={e=>set(e.target.value)} placeholder={ph}
+                    style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                </div>
+              ))}
             </div>
-          ) : crew.map((u,i)=>{
-            const unit = u.unit || locs.find(l=>l.id===u.unit_id);
-            return (
-              <button key={u.id} onClick={()=>handleLogin(u)}
-                style={{width:"100%",display:"flex",gap:12,alignItems:"center",background:"transparent",border:"none",borderBottom:i<crew.length-1?`1px solid ${T.border}`:"none",padding:"13px 16px",cursor:"pointer",textAlign:"left",transition:"background 0.12s"}}
-                onMouseEnter={e=>e.currentTarget.style.background=T.bg}
-                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{width:42,height:42,borderRadius:12,background:unit?.bg||T.bg,border:`1.5px solid ${unit?.bd||T.border}`,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:F,fontSize:14,fontWeight:700,color:unit?.color||T.body,flexShrink:0}}>
-                  {initials(`${u.first_name} ${u.surname}`)}
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontFamily:F,fontSize:14,fontWeight:700,color:T.ink,marginBottom:2}}>{u.first_name} {u.surname}</div>
-                  <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <span style={{fontFamily:F,fontSize:11,color:T.muted}}>{u.title}</span>
-                    {unit&&<span style={{fontFamily:F,fontSize:10,fontWeight:700,color:unit.color,background:unit.bg,border:`1px solid ${unit.bd}`,borderRadius:20,padding:"1px 7px"}}>{unit.name}</span>}
-                  </div>
-                </div>
-                <span style={{color:T.muted,fontSize:16}}>›</span>
-              </button>
-            );
-          })}
+            {loginErr&&<div style={{fontFamily:F,fontSize:12,color:T.redDk,background:T.redBg,border:`1px solid ${T.redBd}`,borderRadius:8,padding:"8px 12px"}}>{loginErr}</div>}
+            <button onClick={handleNameLogin} disabled={loadingCrew}
+              style={{width:"100%",fontFamily:F,fontSize:14,fontWeight:700,color:"#fff",background:loadingCrew?"#888":T.ink,border:"none",borderRadius:12,padding:"13px 0",cursor:loadingCrew?"not-allowed":"pointer"}}>
+              {loadingCrew?"Checking…":"Sign in →"}
+            </button>
+          </div>
         </div>
 
-        <button onClick={()=>setView("signup")}
-          style={{width:"100%",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:T.ink,border:"none",borderRadius:14,padding:"13px 0",cursor:"pointer",marginBottom:10}}>
-          + New crew member
-        </button>
+        <div style={{textAlign:"center",marginBottom:10}}>
+          <span style={{fontFamily:F,fontSize:12,color:T.muted}}>New to Proppy? </span>
+          <button onClick={()=>setView("signup")} style={{fontFamily:F,fontSize:12,fontWeight:700,color:T.ink,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
+            Create profile
+          </button>
+        </div>
         <button onClick={()=>setView("landing")}
           style={{display:"block",margin:"0 auto",fontFamily:F,fontSize:12,color:T.muted,background:"none",border:"none",cursor:"pointer"}}>
           ← Back
@@ -297,7 +307,7 @@ function SignupScreen({locs, onSignup}) {
         <div style={{background:T.white,borderRadius:20,padding:"22px 22px 26px",boxShadow:"0 2px 20px rgba(0,0,0,0.07)"}}>
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{display:"flex",gap:10}}>
-              {[["First name",firstName,setFirstName,"e.g. Collins"],["Surname",surname,setSurname,"e.g. Chirwa"]].map(([label,val,set,ph])=>(
+              {[["First name",firstName,setFirstName,"First name"],["Surname",surname,setSurname,"Surname"]].map(([label,val,set,ph])=>(
                 <div key={label} style={{flex:1}}>
                   <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>{label}</div>
                   <input value={val} onChange={e=>set(e.target.value)} placeholder={ph}
