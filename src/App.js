@@ -1,5 +1,4 @@
 /* eslint-disable */
-
 import { useState, useRef, useEffect, useCallback } from "react";
 import { createClient } from "@supabase/supabase-js";
 import jsQRLib from "jsqr";
@@ -438,7 +437,7 @@ function QRLabelDrawer({item,type,onClose}){
     const canvas=ref.current?.querySelector("canvas");
     const src=canvas?canvas.toDataURL("image/png"):"";
     const w=window.open("","_blank");
-    w.document.write(`<html><head><title>PROPPY Label</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff}.card{border:1px solid #ddd;border-radius:12px;padding:20px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}</style></head><body><div class="card"><p style="font-size:9px;letter-spacing:0.12em;color:#aaa">PROPPY · PROJECT UTOPIA</p>${src?`<img src="${src}" width="140" height="140" style="border-radius:6px"/>`:""}  <p style="font-size:15px;font-weight:700">${item.name||""}</p>${item.box_label?`<p style="font-size:12px;color:#888">${item.box_label}</p>`:""}${item.scene?`<p style="font-size:12px;color:#888">Sc ${item.scene}</p>`:""}<p style="font-size:8px;color:#bbb;margin-top:4px;word-break:break-all">${val}</p></div></body></html>`);
+    w.document.write(`<html><head><title>PROPPY Label</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff}.card{border:1px solid #ddd;border-radius:12px;padding:20px 24px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:10px}</style></head><body><div class="card"><p style="font-size:9px;letter-spacing:0.12em;color:#aaa">PROPPY · PROJECT UTOPIA</p>${src?`<img alt="" src="${src}" width="140" height="140" style="border-radius:6px"/>`:""}  <p style="font-size:15px;font-weight:700">${item.name||""}</p>${item.box_label?`<p style="font-size:12px;color:#888">${item.box_label}</p>`:""}${item.scene?`<p style="font-size:12px;color:#888">Sc ${item.scene}</p>`:""}<p style="font-size:8px;color:#bbb;margin-top:4px;word-break:break-all">${val}</p></div></body></html>`);
     w.document.close();setTimeout(()=>{w.print();w.close();},500);
   };
   return (
@@ -974,7 +973,7 @@ function AddCharDrawer({onClose,onSave}){
   return(
     <Drawer onClose={onClose} title="Add character">
       <div onClick={()=>fileRef.current.click()} style={{width:64,height:64,borderRadius:16,background:T.bg,border:`1.5px dashed ${T.border}`,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",overflow:"hidden",margin:"0 auto 16px"}}>
-        {f.image_url?<img src={f.image_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{textAlign:"center"}}><div style={{fontSize:20}}>👤</div><div style={{fontFamily:F,fontSize:9,color:T.muted}}>Photo</div></div>}
+        {f.image_url?<img alt="" src={f.image_url} style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<div style={{textAlign:"center"}}><div style={{fontSize:20}}>👤</div><div style={{fontFamily:F,fontSize:9,color:T.muted}}>Photo</div></div>}
         <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={pickImg}/>
       </div>
       <div style={{display:"flex",flexDirection:"column",gap:12}}>
@@ -1048,16 +1047,33 @@ function MessagesTab({user, locs, allProps, allChars}) {
 
   const load = async () => {
     setLoading(true);
-    const [d, r, c] = await Promise.all([
-      sb.from("messages").select("*, from_user:proppy_users!messages_from_user_fkey(id,first_name,surname,title,unit_id), to_user:proppy_users!messages_to_user_fkey(id,first_name,surname,title,unit_id)").or(`from_user.eq.${user.id},to_user.eq.${user.id}`).order("created_at",{ascending:false}),
-      sb.from("prop_requests").select("*, from_user:proppy_users(id,first_name,surname,title,unit_id), to_unit:locations(id,name,color,bg,bd), prop:props(id,name,status,in_box)").or(`from_user.eq.${user.id},to_unit.eq.${locs.find(l=>l.id===user.unitId)?.id||""}`).order("created_at",{ascending:false}),
-      sb.from("proppy_users").select("*").neq("id",user.id).order("first_name"),
-    ]);
-    if(d.data) setDms(d.data);
-    if(r.data) setRequests(r.data);
-    if(c.data) setCrew(c.data);
-    const unread = (d.data||[]).filter(m=>m.to_user?.id===user.id&&!m.read).length;
-    setUnreadDMs(unread);
+    try {
+      const [d, r, c] = await Promise.all([
+        sb.from("messages").select("*").or(`from_user.eq.${user.id},to_user.eq.${user.id}`).order("created_at",{ascending:false}),
+        sb.from("prop_requests").select("*").or(`from_user.eq.${user.id},to_unit.eq.${locs.find(l=>l.id===user.unitId)?.id||""}`).order("created_at",{ascending:false}),
+        sb.from("proppy_users").select("*").order("first_name"),
+      ]);
+      const allCrew = c.data || [];
+      setCrew(allCrew.filter(u=>u.id!==user.id));
+      // Enrich messages with user objects
+      const msgs = (d.data||[]).map(m=>({
+        ...m,
+        from_user: allCrew.find(u=>u.id===m.from_user) || {id:m.from_user},
+        to_user:   allCrew.find(u=>u.id===m.to_user)   || {id:m.to_user},
+      }));
+      setDms(msgs);
+      // Enrich requests with user + location objects
+      const reqs = (r.data||[]).map(req=>({
+        ...req,
+        from_user: allCrew.find(u=>u.id===req.from_user) || {id:req.from_user},
+        to_unit:   locs.find(l=>l.id===req.to_unit)      || {id:req.to_unit},
+      }));
+      setRequests(reqs);
+      const unread = msgs.filter(m=>m.to_user?.id===user.id&&!m.read).length;
+      setUnreadDMs(unread);
+    } catch(e) {
+      console.error("Messages load error:", e);
+    }
     setLoading(false);
   };
 
@@ -1262,10 +1278,17 @@ function NewDM({user, crew, locs, onSent, onBack}) {
 }
 
 function DMThread({conv, user, locs, onBack}) {
-  const [msgs,   setMsgs]  = useState(conv.msgs||[]);
-  const [body,   setBody]  = useState("");
-  const [sending,setSending]=useState(false);
+  const [msgs,      setMsgs]     = useState(conv.msgs||[]);
+  const [body,      setBody]     = useState("");
+  const [sending,   setSending]  = useState(false);
+  const [selected,  setSelected] = useState(null); // message id selected for delete
   const endRef = useRef();
+
+  const deleteMsg = async (msgId) => {
+    await sb.from("messages").delete().eq("id", msgId);
+    setMsgs(ms => ms.filter(m => m.id !== msgId));
+    setSelected(null);
+  };
 
   useEffect(()=>{
     // Mark as read
@@ -1279,7 +1302,7 @@ function DMThread({conv, user, locs, onBack}) {
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
         const m=payload.new;
         if((m.from_user===user.id&&m.to_user===conv.partner.id)||(m.from_user===conv.partner.id&&m.to_user===user.id)){
-          sb.from("messages").select("*, from_user:proppy_users!messages_from_user_fkey(id,first_name,surname,unit_id), to_user:proppy_users!messages_to_user_fkey(id,first_name,surname,unit_id)").eq("id",m.id).single()
+          sb.from("messages").select("*").eq("id",m.id).single()
             .then(({data})=>{ if(data) setMsgs(ms=>[...ms,data]); });
         }
       }).subscribe();
@@ -1317,9 +1340,25 @@ function DMThread({conv, user, locs, onBack}) {
           const time=new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
           return(
             <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start",gap:2}}>
-              <div style={{background:isMe?T.ink:T.white,color:isMe?"#fff":T.ink,borderRadius:isMe?"16px 4px 16px 16px":"4px 16px 16px 16px",padding:"10px 14px",maxWidth:"78%",fontFamily:F,fontSize:13,lineHeight:1.5,boxShadow:T.s1}}>
+              <div
+                onContextMenu={e=>{e.preventDefault();if(isMe)setSelected(m.id);}}
+                onTouchStart={()=>{ if(!isMe)return; const t=setTimeout(()=>setSelected(m.id),500); return()=>clearTimeout(t); }}
+                onClick={()=>{ if(selected===m.id)setSelected(null); }}
+                style={{background:selected===m.id?"#FF4444":isMe?T.ink:T.white,color:isMe?"#fff":T.ink,borderRadius:isMe?"16px 4px 16px 16px":"4px 16px 16px 16px",padding:"10px 14px",maxWidth:"78%",fontFamily:F,fontSize:13,lineHeight:1.5,cursor:isMe?"pointer":"default",transition:"background 0.2s",position:"relative"}}>
                 {m.body}
               </div>
+              {selected===m.id&&(
+                <div style={{display:"flex",gap:6,marginTop:2}}>
+                  <button onClick={()=>deleteMsg(m.id)}
+                    style={{fontFamily:F,fontSize:11,fontWeight:700,color:"#fff",background:T.redDk,border:"none",borderRadius:20,padding:"4px 12px",cursor:"pointer"}}>
+                    🗑 Delete
+                  </button>
+                  <button onClick={()=>setSelected(null)}
+                    style={{fontFamily:F,fontSize:11,fontWeight:600,color:T.body,background:T.bg,border:`1px solid ${T.border}`,borderRadius:20,padding:"4px 10px",cursor:"pointer"}}>
+                    Cancel
+                  </button>
+                </div>
+              )}
               <span style={{fontFamily:F,fontSize:9,color:T.muted,paddingLeft:isMe?0:4,paddingRight:isMe?4:0}}>{time}</span>
             </div>
           );
@@ -1477,11 +1516,10 @@ function RequestThread({req, user, locs, allProps, onBack}) {
   const [sending, setSending]= useState(false);
   const [status,  setStatus] = useState(req.status);
   const endRef = useRef();
-  const myUnit = locs.find(l=>l.id===user.unitId);
-  const isReceiver = req.to_unit?.id===myUnit?.id;
+  const isReceiver = req.to_unit?.id===locs.find(l=>l.id===user.unitId)?.id;
 
   useEffect(()=>{
-    sb.from("request_messages").select("*, from_user:proppy_users(id,first_name,surname,unit_id)").eq("request_id",req.id).order("created_at")
+    sb.from("request_messages").select("*").eq("request_id",req.id).order("created_at")
       .then(({data})=>setMsgs(data||[]));
   },[req.id]);
 
