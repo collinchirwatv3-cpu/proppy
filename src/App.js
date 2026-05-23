@@ -1065,6 +1065,580 @@ function LocDrawer({loc,onClose,onSave,onDelete}){
 
 // ─── USER BADGE ───────────────────────────────────────────────────────────────
 
+
+// ─── CALENDAR & SCHEDULE ──────────────────────────────────────────────────────
+
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DAYS   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+function CalendarTab({user, locs, allProps, allChars}) {
+  const [view,        setView]        = useState("week");   // week | month
+  const [schedule,    setSchedule]    = useState([]);
+  const [orders,      setOrders]      = useState([]);
+  const [loading,     setLoading]     = useState(true);
+  const [today]                       = useState(new Date());
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [showOrder,   setShowOrder]   = useState(false);
+  const [showUpload,  setShowUpload]  = useState(false);
+  const [openDay,     setOpenDay]     = useState(null);   // date string clicked
+  const fileRef = useRef();
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [s, o] = await Promise.all([
+        sb.from("schedule").select("*").order("shoot_date"),
+        sb.from("prop_orders").select("*").order("needed_date"),
+      ]);
+      setSchedule(s.data || []);
+      setOrders(o.data || []);
+    } catch(e) { console.error(e); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Helper — get items for a specific date
+  const getDateStr = (d) => d.toISOString().split("T")[0];
+  const scenesOn   = (ds) => schedule.filter(s => s.shoot_date === ds);
+  const ordersOn   = (ds) => orders.filter(o => o.needed_date === ds);
+
+  // ── WEEK VIEW ──
+  const getWeekDays = () => {
+    const start = new Date(currentDate);
+    start.setDate(start.getDate() - start.getDay());
+    return Array.from({length:7}, (_,i) => { const d=new Date(start); d.setDate(d.getDate()+i); return d; });
+  };
+
+  // ── MONTH VIEW ──
+  const getMonthDays = () => {
+    const year  = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+    const first = new Date(year, month, 1);
+    const last  = new Date(year, month+1, 0);
+    const days  = [];
+    // Pad start
+    for(let i=0; i<first.getDay(); i++) days.push(null);
+    for(let d=1; d<=last.getDate(); d++) days.push(new Date(year, month, d));
+    return days;
+  };
+
+  const prevPeriod = () => {
+    const d = new Date(currentDate);
+    if(view==="week") d.setDate(d.getDate()-7);
+    else d.setMonth(d.getMonth()-1);
+    setCurrentDate(d);
+  };
+  const nextPeriod = () => {
+    const d = new Date(currentDate);
+    if(view==="week") d.setDate(d.getDate()+7);
+    else d.setMonth(d.getMonth()+1);
+    setCurrentDate(d);
+  };
+  const goToday = () => setCurrentDate(new Date());
+
+  // ── PARSE SCHEDULE UPLOAD ──
+  const [parseStatus, setParseStatus] = useState(null); // null | "parsing" | {found, failed}
+
+  // Load PDF.js from CDN
+  const loadPDFJS = () => new Promise((resolve, reject) => {
+    if(window.pdfjsLib) { resolve(window.pdfjsLib); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = reject;
+    document.head.appendChild(s);
+  });
+
+  // Smart parser — finds scene numbers and dates from raw PDF text
+  const parseScheduleText = (text) => {
+    const lines  = text.split("\n").map(l=>l.trim()).filter(Boolean);
+    const parsed = [];
+
+    // Date patterns: "Monday 5 June 2024", "05/06/2024", "2024-06-05", "Mon 5 Jun"
+    const dateRe = /(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})|(\d{4}-\d{2}-\d{2})|((?:Mon|Tue|Wed|Thu|Fri|Sat|Sun)[a-z]*\.?\s+\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s*\d{0,4})/gi;
+    // Scene patterns: "Sc 1", "Scene 1A", "1/2", "INT.", "EXT."
+    const sceneRe = /(?:SC(?:ENE)?\.?\s*)?(\d+[A-Z]?(?:\/\d+[A-Z]?)?)\s*[-–]?\s*((?:INT|EXT)\.?\s+[^\n]{0,60})/gi;
+
+    let currentDate = null;
+
+    lines.forEach(line => {
+      // Check if this line contains a date
+      const dateMatch = line.match(dateRe);
+      if(dateMatch) {
+        const d = new Date(dateMatch[0]);
+        if(!isNaN(d)) currentDate = getDateStr(d);
+      }
+
+      // Check if line contains a scene
+      const sceneMatches = [...line.matchAll(sceneRe)];
+      sceneMatches.forEach(m => {
+        const sceneNum = m[1];
+        const desc     = m[2]?.trim() || "";
+        if(sceneNum && currentDate) {
+          // Avoid duplicates
+          if(!parsed.find(p=>p.scene===sceneNum&&p.shoot_date===currentDate)) {
+            parsed.push({ scene:sceneNum, shoot_date:currentDate, description:desc, location:"" });
+          }
+        }
+      });
+
+      // Also catch simpler "Sc X" patterns without INT/EXT
+      const simpleScene = line.match(/^(?:SC(?:ENE)?\.?\s+)?(\d+[A-Z]?)\s*$/i);
+      if(simpleScene && currentDate) {
+        const sceneNum = simpleScene[1];
+        if(!parsed.find(p=>p.scene===sceneNum&&p.shoot_date===currentDate)) {
+          parsed.push({ scene:sceneNum, shoot_date:currentDate, description:line, location:"" });
+        }
+      }
+    });
+
+    return parsed;
+  };
+
+  const handleScheduleFile = async (file) => {
+    setShowUpload(false);
+    const ext = file.name.split(".").pop().toLowerCase();
+
+    if(ext === "csv" || ext === "tsv" || ext === "txt") {
+      // ── CSV / TSV ──
+      const text  = await file.text();
+      const lines = text.split("\n").filter(l=>l.trim());
+      const parsed = [];
+      lines.forEach((line, i) => {
+        if(i===0) return;
+        const cols = line.split(/[,\t]/);
+        if(cols.length >= 2) {
+          const scene   = cols[0]?.trim().replace(/"/g,"");
+          const dateStr = cols[1]?.trim().replace(/"/g,"");
+          const desc    = cols[2]?.trim().replace(/"/g,"") || "";
+          const loc     = cols[3]?.trim().replace(/"/g,"") || "";
+          const d = new Date(dateStr);
+          if(scene && !isNaN(d)) parsed.push({ scene, shoot_date:getDateStr(d), description:desc, location:loc });
+        }
+      });
+      if(parsed.length > 0) {
+        await sb.from("schedule").insert(parsed);
+        setParseStatus({found:parsed.length, failed:0});
+        await load();
+      } else {
+        setParseStatus({found:0, failed:lines.length});
+      }
+      setTimeout(()=>setParseStatus(null), 4000);
+
+    } else if(ext === "pdf") {
+      // ── PDF — auto convert via PDF.js ──
+      setParseStatus("parsing");
+      try {
+        const pdfjs   = await loadPDFJS();
+        const buffer  = await file.arrayBuffer();
+        const pdf     = await pdfjs.getDocument({data:buffer}).promise;
+        let fullText  = "";
+
+        // Extract text from all pages
+        for(let p=1; p<=pdf.numPages; p++) {
+          const page    = await pdf.getPage(p);
+          const content = await page.getTextContent();
+          const pageText = content.items.map(i=>i.str).join(" ");
+          fullText += pageText + "\n";
+        }
+
+        // Parse extracted text
+        const parsed = parseScheduleText(fullText);
+
+        if(parsed.length > 0) {
+          await sb.from("schedule").insert(parsed);
+          await load();
+          setParseStatus({found:parsed.length, failed:0});
+        } else {
+          setParseStatus({found:0, failed:1});
+        }
+        setTimeout(()=>setParseStatus(null), 5000);
+
+      } catch(e) {
+        console.error("PDF parse error:", e);
+        setParseStatus({found:0, failed:1, error:"Could not read PDF. Try exporting as CSV."});
+        setTimeout(()=>setParseStatus(null), 5000);
+      }
+    }
+  };
+
+  const weekDays  = getWeekDays();
+  const monthDays = getMonthDays();
+  const todayStr  = getDateStr(today);
+
+  return (
+    <div style={{flex:1, display:"flex", flexDirection:"column", overflow:"hidden"}}>
+
+      {/* Header */}
+      <div style={{background:T.white, borderBottom:`1px solid ${T.border}`, padding:"10px 16px", flexShrink:0}}>
+        <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10}}>
+          <div style={{display:"flex", gap:8, alignItems:"center"}}>
+            <button onClick={prevPeriod} style={{background:T.bg, border:`1px solid ${T.border}`, borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center"}}>‹</button>
+            <span style={{fontFamily:F, fontSize:14, fontWeight:700, color:T.ink, minWidth:120, textAlign:"center"}}>
+              {view==="week"
+                ? `${weekDays[0].toLocaleDateString("en-GB",{day:"numeric",month:"short"})} – ${weekDays[6].toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"})}`
+                : `${MONTHS[currentDate.getMonth()]} ${currentDate.getFullYear()}`
+              }
+            </span>
+            <button onClick={nextPeriod} style={{background:T.bg, border:`1px solid ${T.border}`, borderRadius:8, width:30, height:30, cursor:"pointer", fontSize:14, display:"flex", alignItems:"center", justifyContent:"center"}}>›</button>
+          </div>
+          <button onClick={goToday} style={{fontFamily:F, fontSize:11, fontWeight:600, color:T.blueDk, background:T.blueBg, border:`1px solid ${T.blueBd}`, borderRadius:20, padding:"4px 10px", cursor:"pointer"}}>Today</button>
+        </div>
+        {/* Week / Month toggle */}
+        <div style={{display:"flex", gap:2, background:T.bg, borderRadius:10, padding:3}}>
+          {["week","month"].map(v => { const a=view===v; return (
+            <button key={v} onClick={()=>setView(v)}
+              style={{flex:1, fontFamily:F, fontSize:12, fontWeight:a?700:500, color:a?T.ink:T.muted, background:a?T.white:"transparent", border:"none", borderRadius:8, padding:"6px 0", cursor:"pointer", boxShadow:a?"0 1px 4px rgba(0,0,0,0.08)":"none", textTransform:"capitalize"}}>
+              {v}
+            </button>
+          ); })}
+        </div>
+      </div>
+
+      {/* Calendar grid */}
+      <div style={{flex:1, overflowY:"auto", padding:"10px 12px 80px"}}>
+        {loading ? <Spinner/> : (
+
+          view==="week" ? (
+            // ── WEEK VIEW ──
+            <div style={{display:"flex", flexDirection:"column", gap:8}}>
+              {weekDays.map(day => {
+                const ds       = getDateStr(day);
+                const isToday  = ds===todayStr;
+                const scenes   = scenesOn(ds);
+                const dayOrds  = ordersOn(ds);
+                const hasItems = scenes.length>0 || dayOrds.length>0;
+                return (
+                  <div key={ds} style={{background:isToday?T.blueBg:T.white, border:`1.5px solid ${isToday?T.blueBd:T.border}`, borderRadius:14, overflow:"hidden"}}>
+                    {/* Day header */}
+                    <div style={{display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 14px", borderBottom:hasItems?`1px solid ${T.border}`:"none"}}>
+                      <div style={{display:"flex", gap:10, alignItems:"center"}}>
+                        <div style={{textAlign:"center"}}>
+                          <div style={{fontFamily:F, fontSize:10, fontWeight:600, color:isToday?T.blueDk:T.muted, textTransform:"uppercase"}}>{DAYS[day.getDay()]}</div>
+                          <div style={{fontFamily:F, fontSize:20, fontWeight:800, color:isToday?T.blueDk:T.ink, lineHeight:1}}>{day.getDate()}</div>
+                        </div>
+                        {isToday && <span style={{fontFamily:F, fontSize:10, fontWeight:700, color:T.blueDk, background:T.blueBg, border:`1px solid ${T.blueBd}`, borderRadius:20, padding:"2px 8px"}}>Today</span>}
+                      </div>
+                      <button onClick={()=>{ setOpenDay(ds); setShowOrder(true); }}
+                        style={{fontFamily:F, fontSize:11, fontWeight:600, color:"#fff", background:T.ink, border:"none", borderRadius:20, padding:"4px 10px", cursor:"pointer"}}>
+                        + Order
+                      </button>
+                    </div>
+                    {/* Scenes */}
+                    {scenes.map(s => (
+                      <div key={s.id} style={{display:"flex", gap:8, alignItems:"center", padding:"8px 14px", borderBottom:`1px solid ${T.border}`, background:"#FFFBEB"}}>
+                        <span style={{fontSize:14}}>🎬</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontFamily:F, fontSize:12, fontWeight:700, color:T.ink}}>Sc {s.scene} {s.description?`— ${s.description}`:""}</div>
+                          {s.location && <div style={{fontFamily:F, fontSize:10, color:T.muted}}>{s.location}</div>}
+                        </div>
+                        <span style={{fontFamily:F, fontSize:10, fontWeight:700, color:T.amberDk, background:T.amberBg, border:`1px solid ${T.amberBd}`, borderRadius:20, padding:"2px 7px"}}>Scene</span>
+                      </div>
+                    ))}
+                    {/* Prop orders */}
+                    {dayOrds.map(o => {
+                      const fromLoc = locs.find(l=>l.id===o.from_loc);
+                      const toLoc   = locs.find(l=>l.id===o.to_loc);
+                      const statusColor = o.status==="Confirmed"?T.greenDk:o.status==="Dispatched"?T.blueDk:o.status==="Cancelled"?T.redDk:T.amberDk;
+                      const statusBg    = o.status==="Confirmed"?T.greenBg:o.status==="Dispatched"?T.blueBg:o.status==="Cancelled"?T.redBg:T.amberBg;
+                      const statusBd    = o.status==="Confirmed"?T.greenBd:o.status==="Dispatched"?T.blueBd:o.status==="Cancelled"?T.redBd:T.amberBd;
+                      return (
+                        <div key={o.id} style={{display:"flex", gap:8, alignItems:"center", padding:"8px 14px", borderBottom:`1px solid ${T.border}`}}>
+                          <span style={{fontSize:14}}>📦</span>
+                          <div style={{flex:1, minWidth:0}}>
+                            <div style={{fontFamily:F, fontSize:12, fontWeight:700, color:T.ink, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap"}}>{o.prop_name}</div>
+                            <div style={{fontFamily:F, fontSize:10, color:T.muted}}>
+                              {fromLoc?.name||"?"} → {toLoc?.name||"?"}
+                              {o.scene ? ` · Sc ${o.scene}` : ""}
+                            </div>
+                          </div>
+                          <span style={{fontFamily:F, fontSize:10, fontWeight:700, color:statusColor, background:statusBg, border:`1px solid ${statusBd}`, borderRadius:20, padding:"2px 7px", flexShrink:0}}>{o.status}</span>
+                        </div>
+                      );
+                    })}
+                    {!hasItems && (
+                      <div style={{padding:"8px 14px"}}>
+                        <span style={{fontFamily:F, fontSize:11, color:T.muted}}>Nothing scheduled</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+          ) : (
+            // ── MONTH VIEW ──
+            <div>
+              {/* Day labels */}
+              <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2, marginBottom:4}}>
+                {DAYS.map(d => <div key={d} style={{fontFamily:F, fontSize:10, fontWeight:700, color:T.muted, textAlign:"center", padding:"4px 0"}}>{d}</div>)}
+              </div>
+              {/* Day cells */}
+              <div style={{display:"grid", gridTemplateColumns:"repeat(7,1fr)", gap:2}}>
+                {monthDays.map((day, i) => {
+                  if(!day) return <div key={`empty-${i}`}/>;
+                  const ds      = getDateStr(day);
+                  const isToday = ds===todayStr;
+                  const scenes  = scenesOn(ds);
+                  const ords    = ordersOn(ds);
+                  return (
+                    <div key={ds} onClick={()=>{ setOpenDay(ds); setShowOrder(true); }}
+                      style={{background:isToday?T.blueBg:T.white, border:`1.5px solid ${isToday?T.blueDk:T.border}`, borderRadius:10, padding:"6px 4px", minHeight:60, cursor:"pointer", position:"relative"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=isToday?T.blueBg:"#F8F8F8"}
+                      onMouseLeave={e=>e.currentTarget.style.background=isToday?T.blueBg:T.white}>
+                      <div style={{fontFamily:F, fontSize:12, fontWeight:isToday?800:600, color:isToday?T.blueDk:T.ink, textAlign:"center", marginBottom:3}}>{day.getDate()}</div>
+                      {scenes.length>0 && <div style={{background:"#FEF9C3", borderRadius:4, padding:"1px 4px", marginBottom:2}}><span style={{fontFamily:F, fontSize:9, fontWeight:700, color:T.amberDk}}>🎬 {scenes.length}</span></div>}
+                      {ords.length>0   && <div style={{background:T.greenBg, borderRadius:4, padding:"1px 4px"}}><span style={{fontFamily:F, fontSize:9, fontWeight:700, color:T.greenDk}}>📦 {ords.length}</span></div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        )}
+      </div>
+
+      {/* Bottom action buttons */}
+      <div style={{position:"fixed", bottom:0, left:0, right:0, maxWidth:480, margin:"0 auto", background:T.white, borderTop:`1px solid ${T.border}`, padding:"10px 16px 24px", display:"flex", gap:8}}>
+        <button onClick={()=>{ setOpenDay(getDateStr(today)); setShowOrder(true); }}
+          style={{flex:2, fontFamily:F, fontSize:13, fontWeight:700, color:"#fff", background:T.ink, border:"none", borderRadius:12, padding:"11px 0", cursor:"pointer"}}>
+          📦 Pre-order prop
+        </button>
+        <button onClick={()=>setShowUpload(true)}
+          style={{flex:1, fontFamily:F, fontSize:12, fontWeight:600, color:T.body, background:T.bg, border:`1.5px solid ${T.border}`, borderRadius:12, padding:"11px 0", cursor:"pointer"}}>
+          📄 Schedule
+        </button>
+      </div>
+
+      {/* Parse status toast */}
+      {parseStatus==="parsing"&&(
+        <div style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",background:T.ink,color:"#fff",fontFamily:F,fontSize:13,fontWeight:700,borderRadius:20,padding:"10px 20px",zIndex:999,boxShadow:"0 4px 20px rgba(0,0,0,0.2)",display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{width:14,height:14,border:"2px solid rgba(255,255,255,0.3)",borderTop:"2px solid #fff",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+          Reading schedule PDF…
+        </div>
+      )}
+      {parseStatus&&parseStatus!=="parsing"&&(
+        <div style={{position:"fixed",top:20,left:"50%",transform:"translateX(-50%)",background:parseStatus.found>0?T.greenDk:T.redDk,color:"#fff",fontFamily:F,fontSize:13,fontWeight:700,borderRadius:20,padding:"10px 20px",zIndex:999,boxShadow:"0 4px 20px rgba(0,0,0,0.2)",whiteSpace:"nowrap"}}>
+          {parseStatus.found>0 ? `✓ ${parseStatus.found} scenes imported` : parseStatus.error||"Could not parse schedule — try CSV"}
+        </div>
+      )}
+
+      {/* Pre-order drawer */}
+      {showOrder && (
+        <PropOrderDrawer
+          user={user} locs={locs} allProps={allProps} allChars={allChars}
+          defaultDate={openDay||getDateStr(today)}
+          onClose={()=>{ setShowOrder(false); setOpenDay(null); }}
+          onSaved={()=>{ setShowOrder(false); setOpenDay(null); load(); }}
+        />
+      )}
+
+      {/* Schedule upload drawer */}
+      {showUpload && (
+        <Drawer onClose={()=>setShowUpload(false)} title="Upload Schedule">
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{background:T.blueBg,border:`1px solid ${T.blueBd}`,borderRadius:12,padding:"12px 14px"}}>
+              <div style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.blueDk,marginBottom:4}}>Upload your shooting schedule</div>
+              <div style={{fontFamily:F,fontSize:12,color:T.body,lineHeight:1.6}}>Supports <b>PDF</b>, <b>CSV</b> and <b>Excel CSV</b>.<br/>PDF is auto-converted — works best with text-based schedules.</div>
+            </div>
+            <button onClick={()=>fileRef.current.click()}
+              style={{width:"100%",fontFamily:F,fontSize:14,fontWeight:700,color:"#fff",background:T.ink,border:"none",borderRadius:12,padding:"13px 0",cursor:"pointer"}}>
+              📄 Choose CSV file
+            </button>
+            <input ref={fileRef} type="file" accept=".csv,.tsv,.txt,.pdf" style={{display:"none"}} onChange={e=>{ if(e.target.files[0]) handleScheduleFile(e.target.files[0]); setShowUpload(false); }}/>
+            <div style={{fontFamily:F,fontSize:12,fontWeight:700,color:T.body,marginTop:4}}>Or add a scene manually:</div>
+            <ManualSceneEntry onSaved={()=>{ setShowUpload(false); load(); }}/>
+          </div>
+        </Drawer>
+      )}
+    </div>
+  );
+}
+
+function ManualSceneEntry({onSaved}) {
+  const [scene,    setScene]    = useState("");
+  const [date,     setDate]     = useState("");
+  const [desc,     setDesc]     = useState("");
+  const [location, setLocation] = useState("");
+  const [saving,   setSaving]   = useState(false);
+
+  const save = async () => {
+    if(!scene.trim()||!date) return;
+    setSaving(true);
+    await sb.from("schedule").insert({scene:scene.trim(), shoot_date:date, description:desc.trim(), location:location.trim()});
+    setSaving(false);
+    onSaved();
+  };
+
+  return (
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{display:"flex",gap:8}}>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:4}}>Scene</div>
+          <input value={scene} onChange={e=>setScene(e.target.value)} placeholder="e.g. 1A"
+            style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+        </div>
+        <div style={{flex:1}}>
+          <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:4}}>Date</div>
+          <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+            style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+        </div>
+      </div>
+      <div>
+        <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:4}}>Description</div>
+        <input value={desc} onChange={e=>setDesc(e.target.value)} placeholder="e.g. INT. SHIP CABIN"
+          style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+      </div>
+      <div>
+        <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:4}}>Shooting Location</div>
+        <input value={location} onChange={e=>setLocation(e.target.value)} placeholder="e.g. Paramecia"
+          style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"8px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+      </div>
+      <button onClick={save} disabled={!scene.trim()||!date||saving}
+        style={{width:"100%",fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:!scene.trim()||!date?"#ccc":T.greenDk,border:"none",borderRadius:12,padding:"11px 0",cursor:!scene.trim()||!date?"not-allowed":"pointer"}}>
+        {saving?"Saving…":"+ Add Scene"}
+      </button>
+    </div>
+  );
+}
+
+function PropOrderDrawer({user, locs, allProps, allChars, defaultDate, onClose, onSaved}) {
+  const [prop,    setProp]    = useState(null);
+  const [fromLoc, setFromLoc] = useState("");
+  const [toLoc,   setToLoc]   = useState("");
+  const [date,    setDate]    = useState(defaultDate||"");
+  const [scene,   setScene]   = useState("");
+  const [notes,   setNotes]   = useState("");
+  const [search,  setSearch]  = useState("");
+  const [saving,  setSaving]  = useState(false);
+
+  const results = search.length>1
+    ? allProps.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||allChars.find(c=>c.id===p.character_id)?.name.toLowerCase().includes(search.toLowerCase()))
+    : [];
+
+  const save = async () => {
+    if(!prop||!toLoc||!date) return;
+    setSaving(true);
+    const {data} = await sb.from("prop_orders").insert({
+      prop_id: prop.id, prop_name: prop.name,
+      from_loc: fromLoc||null, to_loc: toLoc,
+      requested_by: user.id, needed_date: date,
+      scene, notes, status:"Pending"
+    }).select().single();
+    // Notify all crew at destination location
+    if(data) {
+      const destLoc = locs.find(l=>l.id===toLoc);
+      const {data:destCrew} = await sb.from("proppy_users").select("id").eq("unit_id", toLoc);
+      const allCrew = (await sb.from("proppy_users").select("id")).data || [];
+      const targets = (destCrew&&destCrew.length>0) ? destCrew : allCrew;
+      await Promise.all(targets.filter(c=>c.id!==user.id).map(c=>
+        sb.from("notifications").insert({
+          user_id:c.id, type:"prop_request",
+          title:`📅 Prop needed ${new Date(date).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}`,
+          body:`${user.name} needs ${prop.name}${destLoc?` at ${destLoc.name}`:""}${scene?` · Sc ${scene}`:""}`,
+          read:false
+        })
+      ));
+    }
+    setSaving(false);
+    onSaved();
+  };
+
+  return (
+    <Drawer onClose={onClose} title="Pre-order Prop">
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+
+        {/* Prop picker */}
+        <div>
+          <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:6}}>Which prop?</div>
+          {prop ? (
+            <div style={{display:"flex",gap:10,alignItems:"center",background:T.greenBg,border:`1.5px solid ${T.greenBd}`,borderRadius:12,padding:"10px 14px"}}>
+              <span style={{fontSize:18}}>📦</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:F,fontSize:13,fontWeight:700,color:T.ink}}>{prop.name}</div>
+                {allChars.find(c=>c.id===prop.character_id) && <div style={{fontFamily:F,fontSize:11,color:T.muted}}>{allChars.find(c=>c.id===prop.character_id).name}</div>}
+              </div>
+              <button onClick={()=>setProp(null)} style={{background:"none",border:"none",color:T.muted,fontSize:16,cursor:"pointer"}}>✕</button>
+            </div>
+          ) : (
+            <>
+              <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search prop or character…"
+                style={{fontFamily:F,fontSize:13,color:T.ink,background:T.white,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"10px 14px",outline:"none",width:"100%",boxSizing:"border-box",marginBottom:6}}/>
+              {results.slice(0,5).map(p=>(
+                <button key={p.id} onClick={()=>{setProp(p);setSearch("");}}
+                  style={{width:"100%",display:"flex",gap:10,alignItems:"center",background:T.white,border:`1px solid ${T.border}`,borderRadius:10,padding:"9px 12px",cursor:"pointer",marginBottom:4,textAlign:"left"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+                  onMouseLeave={e=>e.currentTarget.style.background=T.white}>
+                  <span style={{fontSize:16}}>📦</span>
+                  <div>
+                    <div style={{fontFamily:F,fontSize:13,fontWeight:600,color:T.ink}}>{p.name}</div>
+                    {allChars.find(c=>c.id===p.character_id)&&<div style={{fontFamily:F,fontSize:11,color:T.muted}}>{allChars.find(c=>c.id===p.character_id).name}</div>}
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+
+        {/* From → To */}
+        <div style={{display:"flex",gap:8}}>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>From</div>
+            <select value={fromLoc} onChange={e=>setFromLoc(e.target.value)}
+              style={{fontFamily:F,fontSize:12,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 10px",outline:"none",width:"100%"}}>
+              <option value="">Any</option>
+              {locs.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end",paddingBottom:10}}>→</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>To</div>
+            <select value={toLoc} onChange={e=>setToLoc(e.target.value)}
+              style={{fontFamily:F,fontSize:12,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 10px",outline:"none",width:"100%"}}>
+              <option value="">Select…</option>
+              {locs.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Date + Scene */}
+        <div style={{display:"flex",gap:8}}>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>Date needed</div>
+            <input type="date" value={date} onChange={e=>setDate(e.target.value)}
+              style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>Scene</div>
+            <input value={scene} onChange={e=>setScene(e.target.value)} placeholder="e.g. 12"
+              style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 11px",outline:"none",width:"100%",boxSizing:"border-box"}}/>
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <div style={{fontFamily:F,fontSize:12,fontWeight:600,color:T.body,marginBottom:5}}>Notes</div>
+          <textarea value={notes} onChange={e=>setNotes(e.target.value)} placeholder="Any special instructions…" rows={3}
+            style={{fontFamily:F,fontSize:13,color:T.ink,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:10,padding:"9px 11px",outline:"none",width:"100%",boxSizing:"border-box",resize:"none"}}/>
+        </div>
+
+        <div style={{display:"flex",gap:8,marginTop:4}}>
+          <button onClick={onClose} style={{flex:1,fontFamily:F,fontSize:13,fontWeight:600,color:T.body,background:T.bg,border:`1.5px solid ${T.border}`,borderRadius:12,padding:"11px 0",cursor:"pointer"}}>Cancel</button>
+          <button onClick={save} disabled={!prop||!toLoc||!date||saving}
+            style={{flex:2,fontFamily:F,fontSize:13,fontWeight:700,color:"#fff",background:!prop||!toLoc||!date?"#ccc":T.ink,border:"none",borderRadius:12,padding:"11px 0",cursor:!prop||!toLoc||!date?"not-allowed":"pointer"}}>
+            {saving?"Saving…":"📅 Schedule order"}
+          </button>
+        </div>
+      </div>
+    </Drawer>
+  );
+}
+
 // ─── MESSAGING COMPONENTS ─────────────────────────────────────────────────────
 
 function MessagesTab({user, locs, allProps, allChars}) {
@@ -1982,7 +2556,7 @@ export default function Proppy(){
           </div>
         </div>
         <div style={{display:"flex",gap:2,background:T.bg,borderRadius:10,padding:3}}>
-          {["Characters","Locations","VFX","Messages"].map(t=>{const a=tab===t;return(
+          {["Characters","Locations","VFX","Messages","Calendar"].map(t=>{const a=tab===t;return(
             <button key={t} onClick={()=>setTab(t)}
               style={{flex:1,fontFamily:F,fontSize:13,fontWeight:a?700:500,color:a?T.ink:T.muted,background:a?T.white:"transparent",border:"none",borderRadius:8,padding:"7px 0",cursor:"pointer",boxShadow:a?"0 1px 4px rgba(0,0,0,0.08)":"none",transition:"all 0.15s"}}>
               {t}
@@ -2119,6 +2693,13 @@ export default function Proppy(){
       {tab==="Messages"&&(
         <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
           <MessagesTab user={user} locs={locs} allProps={props} allChars={chars}/>
+        </div>
+      )}
+
+      {/* CALENDAR */}
+      {tab==="Calendar"&&(
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <CalendarTab user={user} locs={locs} allProps={props} allChars={chars}/>
         </div>
       )}
 
