@@ -32,11 +32,11 @@ const S_META = {
   DAMAGED: {c:T.redDk,  bg:T.redBg,  bd:T.redBd,  dot:T.red,   label:"Damaged"},
   WRAPPED: {c:"#64748B", bg:"#F8FAFC", bd:"#E2E8F0", dot:"#94A3B8", label:"Wrapped"},
 };
-const TITLES = ["Props Master","Key Standby","Prop Standby","Prop Buyer","Set Decorator","Set Dec Standby","Assistant Props","Trainee Props","Other"];
+const TITLES = ["Props Master","Key Standby","Prop Standby","Prop Buyer","Assistant Props","Trainee Props","Other"];
 
 // ─── ROLE PERMISSIONS ────────────────────────────────────────────────────────
-const ADMIN_TITLES  = ["Props Master","Key Standby","Set Decorator","Prop Buyer"]; // full access
-const KEYSET_TITLES = ["Prop Standby","Set Dec Standby","Assistant Props"];           // can add/delete props
+const ADMIN_TITLES  = ["Props Master","Key Standby","Prop Buyer"]; // full access
+const KEYSET_TITLES = ["Prop Standby","Assistant Props"]; // can add/delete props
 
 const canManageProps = (user) =>
   ADMIN_TITLES.includes(user?.title) || KEYSET_TITLES.includes(user?.title);
@@ -350,7 +350,7 @@ function SignupScreen({locs, onSignup}) {
                   HOD / Full Access
                 </div>
                 <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                  {["Props Master","Key Standby","Set Decorator","Prop Buyer"].map(t=>{ const a=title===t; return (
+                  {["Props Master","Key Standby","Prop Buyer"].map(t=>{ const a=title===t; return (
                     <button key={t} onClick={()=>setTitle(t)}
                       style={{fontFamily:F,fontSize:11,fontWeight:a?700:500,color:a?"#fff":T.ink,background:a?T.ink:T.bg,border:`1.5px solid ${a?T.ink:"#C0C0C0"}`,borderRadius:20,padding:"6px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
                       {t==="Key Standby"&&<span style={{fontSize:9,fontWeight:800,color:a?"#FFD60A":T.amberDk,background:a?"rgba(255,214,10,0.2)":T.amberBg,borderRadius:20,padding:"1px 5px"}}>KEY</span>}
@@ -366,7 +366,7 @@ function SignupScreen({locs, onSignup}) {
                   Crew
                 </div>
                 <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-                  {["Prop Standby","Set Dec Standby","Assistant Props","Trainee Props","Other"].map(t=>{ const a=title===t; return (
+                  {["Prop Standby","Assistant Props","Trainee Props","Other"].map(t=>{ const a=title===t; return (
                     <button key={t} onClick={()=>setTitle(t)}
                       style={{fontFamily:F,fontSize:11,fontWeight:a?700:500,color:a?"#fff":T.body,background:a?T.ink:T.bg,border:`1.5px solid ${a?T.ink:T.border}`,borderRadius:20,padding:"5px 12px",cursor:"pointer"}}>
                       {t}
